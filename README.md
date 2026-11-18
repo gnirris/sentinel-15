@@ -56,17 +56,18 @@ Put `UNSW_NB15_training-set.csv` and `UNSW_NB15_testing-set.csv`
 python smoke_test.py   # inference on all 500 sample flows, hostile input, every UI handler
 ```
 
-## Deploy (Hugging Face Spaces, free)
+## Deploy (Render, free)
 
-This README's header block is the Space config, so the repo deploys as-is:
+`render.yaml` configures everything:
 
-```bash
-hf auth login                                   # once, with a write token
-hf repos create <user>/sentinel-15 --type space --space-sdk gradio
-hf upload <user>/sentinel-15 . . --repo-type space --exclude ".venv/*" "data/*.csv"
-```
+1. https://dashboard.render.com → sign in with GitHub
+2. **New → Blueprint** → pick this repo → **Apply**
+3. Live at `https://sentinel-15.onrender.com` (or similar) after ~5 min
 
-Footprint: 2.6 MB of models, ~360 MB peak RAM while serving, so it fits the free CPU tier.
+Footprint: 2.6 MB of models, ~360 MB peak RAM, inside the free 512 MB tier. The free tier
+sleeps after 15 idle minutes; the first visit after that takes ~1 minute to wake.
+
+(Hugging Face Spaces also works if you have PRO: the header block above is its config.)
 
 ## Files
 

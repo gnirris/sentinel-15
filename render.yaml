@@ -1,0 +1,13 @@
+# One-click deploy on Render's free tier (512 MB; this app peaks ~360 MB).
+# Python version comes from .python-version.
+services:
+  - type: web
+    name: sentinel-15
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /
+    envVars:
+      - key: GRADIO_ANALYTICS_ENABLED
+        value: "False"

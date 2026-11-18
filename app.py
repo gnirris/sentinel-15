@@ -414,4 +414,9 @@ def build() -> gr.Blocks:
 demo = build()
 
 if __name__ == "__main__":
-    demo.launch(theme=THEME, css=CSS, js=FORCE_DARK)
+    import os
+    # Hosts like Render pass the port in $PORT and need a public bind address.
+    port = os.environ.get("PORT")
+    demo.launch(theme=THEME, css=CSS, js=FORCE_DARK,
+                server_name="0.0.0.0" if port else None,
+                server_port=int(port) if port else None)
