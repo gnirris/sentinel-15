@@ -16,3 +16,6 @@ data/*.zip
 .DS_Store
 .vscode/
 .idea/
+
+# Streamlit secrets (API keys) — never commit
+.streamlit/secrets.toml

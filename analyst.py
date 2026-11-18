@@ -81,9 +81,9 @@ PROVIDERS = {
                           "claude-opus-5-5"),
     "openai": Provider("OpenAI (GPT)", ("OPENAI_API_KEY",), ("sk-proj-", "sk-svcacct-"), None,
                        "gpt-4o-mini"),
-    "gemini": Provider("Google Gemini", ("GEMINI_API_KEY", "GOOGLE_API_KEY"), ("AIza",),
+    "gemini": Provider("Google Gemini", ("GEMINI_API_KEY", "GOOGLE_API_KEY"), ("AIza", "AQ."),
                        "https://generativelanguage.googleapis.com/v1beta/openai/",
-                       "gemini-2.5-flash", free=True),
+                       "gemini-3.5-flash-lite", free=True),
     "groq": Provider("Groq (Llama, Qwen…)", ("GROQ_API_KEY",), ("gsk_",),
                      "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", free=True),
     "openrouter": Provider("OpenRouter (any model)", ("OPENROUTER_API_KEY",), ("sk-or-",),
@@ -129,10 +129,10 @@ def key_from_env(get=os.environ.get) -> tuple[str, str] | tuple[None, None]:
 def make_client(provider: str, key: str, base_url: str | None = None):
     if provider == "anthropic":
         import anthropic
-        return anthropic.Anthropic(api_key=key, max_retries=2, timeout=90)
+        return anthropic.Anthropic(api_key=key, max_retries=1, timeout=45)
     import openai
     return openai.OpenAI(api_key=key, base_url=base_url or PROVIDERS[provider].base_url,
-                         max_retries=2, timeout=90)
+                         max_retries=1, timeout=45)
 
 
 def list_models(provider: str, client) -> list[str]:

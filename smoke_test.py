@@ -82,8 +82,8 @@ f0 = exp.feature.iloc[0]
 assert A.grounding_check(f"`{f0}` was high", ev) == (True, [])
 assert A.grounding_check("`swin` was odd", ev) == (False, ["swin"])   # invented field caught
 # provider auto-detection from key prefixes
-assert [A.detect(k) for k in ("sk-ant-x", "sk-or-v1-x", "gsk_x", "AIzaX", "xai-x", "sk-proj-x", "sk-x", "zzz")] \
-    == ["anthropic", "openrouter", "groq", "gemini", "xai", "openai", "openai", None]
+assert [A.detect(k) for k in ("sk-ant-x", "sk-or-v1-x", "gsk_x", "AIzaX", "AQ.x", "xai-x", "sk-proj-x", "sk-x", "zzz")] \
+    == ["anthropic", "openrouter", "groq", "gemini", "gemini", "xai", "openai", "openai", None]
 assert A.key_from_env({"GROQ_API_KEY": "gsk_1"}.get) == ("groq", "gsk_1")
 assert A.key_from_env({}.get) == (None, None)
 
@@ -115,6 +115,6 @@ assert not at.exception, at.exception
 at.chat_input[0].set_value("Why was it flagged?").run()
 assert not at.exception, at.exception
 assert len(calls) == 3 and "LAST BATCH SCAN" in calls[-1][-1]["content"]
-assert any("Google Gemini · gemini-2.5-flash" in s.value for s in at.success)
+assert any("Google Gemini · gemini-3.5-flash-lite" in s.value for s in at.success)
 os.environ.pop("GEMINI_API_KEY")
 print("analyst online ok: flow explanation, incident report and chat all render")
