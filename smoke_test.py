@@ -55,3 +55,14 @@ assert r[0] is None and 'class="err"' in r[1]  # unreadable → friendly error
 app.load_upload(None, 0.5)
 app.tradeoff_fig(0.3)
 print("app ok: live sim, batch scan, bad uploads and threshold changes all handled")
+
+# 4. The Streamlit front-end (streamlit_app.py, for Streamlit Community Cloud)
+from streamlit.testing.v1 import AppTest  # noqa: E402
+
+at = AppTest.from_file("streamlit_app.py", default_timeout=60).run()
+assert not at.exception, at.exception
+next(b for b in at.button if "Step" in b.label).click().run()
+next(b for b in at.button if "Load Sample" in b.label).click().run()
+assert not at.exception, at.exception
+assert any("Intrusions" in mm.label for mm in at.metric)
+print("streamlit app ok: all tabs render, sample scan works")

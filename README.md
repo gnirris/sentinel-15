@@ -38,7 +38,8 @@ near-identical in this dataset; both are still detected as attacks by stage 1.
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python app.py                   # http://localhost:7860
+python app.py                   # Gradio    → http://localhost:7860
+streamlit run streamlit_app.py  # Streamlit → http://localhost:8501
 ```
 
 Models are already in `artifacts/`, so this works with no dataset download.
@@ -56,21 +57,21 @@ Put `UNSW_NB15_training-set.csv` and `UNSW_NB15_testing-set.csv`
 python smoke_test.py   # inference on all 500 sample flows, hostile input, every UI handler
 ```
 
-## Deploy (Render, free)
+## Deploy (Streamlit Community Cloud, free, no card)
 
-`render.yaml` configures everything:
+The repo has two front-ends over the same `detector.py`: `app.py` (Gradio) and
+`streamlit_app.py` (Streamlit). Streamlit Community Cloud hosts the Streamlit one free:
 
-1. https://dashboard.render.com → sign in with GitHub
-2. **New → Blueprint** → pick this repo → **Apply**
-3. Live at `https://sentinel-15.onrender.com` (or similar) after ~5 min
+1. https://share.streamlit.io/deploy?repository=gnirris/sentinel-15&branch=main&mainModule=streamlit_app.py
+2. Sign in with GitHub → **Advanced settings → Python 3.12** → **Deploy**
 
-Footprint: 2.6 MB of models, ~360 MB peak RAM, inside the free 512 MB tier. The free tier
-sleeps after 15 idle minutes; the first visit after that takes ~1 minute to wake.
+Footprint: 2.6 MB of models, ~320 MB peak RAM.
 
-(Hugging Face Spaces also works if you have PRO: the header block above is its config.)
+Other hosts: `render.yaml` (Render, needs a card on file) and the header block above
+(Hugging Face Spaces, needs PRO for Gradio) also work.
 
 ## Files
 
-`train.py` training + evaluation · `detector.py` inference + SHAP · `app.py` Gradio dashboard ·
+`train.py` training + evaluation · `detector.py` inference + SHAP · `app.py` Gradio dashboard · `streamlit_app.py` Streamlit dashboard ·
 `smoke_test.py` headless test · `artifacts/` models + `metrics.json` ·
 `sample_test_flows.csv` 500 held-out demo flows · `docs/screenshots/`
