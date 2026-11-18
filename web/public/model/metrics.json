@@ -1,0 +1,353 @@
+{
+  "source": "stratified 80/20 split of UNSW_NB15_training-set.csv (82,332 flows)",
+  "n_train": 65865,
+  "n_test": 16467,
+  "binary": {
+    "accuracy": 0.979170462136394,
+    "precision": 0.9868303571428572,
+    "recall": 0.9751847358552994,
+    "f1": 0.9809729849669939,
+    "confusion": [
+      [
+        7282,
+        118
+      ],
+      [
+        225,
+        8842
+      ]
+    ]
+  },
+  "multiclass": {
+    "accuracy": 0.8758122305216494,
+    "macro_f1": 0.6275413439369121,
+    "weighted_f1": 0.8853945971316651,
+    "per_class_f1": {
+      "Normal": 0.977,
+      "Generic": 0.9865,
+      "Exploits": 0.7312,
+      "Fuzzers": 0.7479,
+      "DoS": 0.532,
+      "Reconnaissance": 0.8394,
+      "Analysis": 0.0702,
+      "Backdoor": 0.0891,
+      "Shellcode": 0.5749,
+      "Worms": 0.7273
+    },
+    "labels": [
+      "Normal",
+      "Generic",
+      "Exploits",
+      "Fuzzers",
+      "DoS",
+      "Reconnaissance",
+      "Analysis",
+      "Backdoor",
+      "Shellcode",
+      "Worms"
+    ],
+    "confusion": [
+      [
+        7282,
+        1,
+        24,
+        71,
+        2,
+        8,
+        0,
+        0,
+        10,
+        2
+      ],
+      [
+        5,
+        3693,
+        50,
+        7,
+        14,
+        1,
+        0,
+        1,
+        3,
+        0
+      ],
+      [
+        50,
+        12,
+        1461,
+        21,
+        446,
+        53,
+        52,
+        120,
+        11,
+        1
+      ],
+      [
+        152,
+        1,
+        16,
+        804,
+        59,
+        3,
+        48,
+        125,
+        3,
+        1
+      ],
+      [
+        7,
+        5,
+        150,
+        5,
+        528,
+        11,
+        30,
+        69,
+        12,
+        1
+      ],
+      [
+        3,
+        0,
+        48,
+        5,
+        75,
+        562,
+        0,
+        2,
+        4,
+        0
+      ],
+      [
+        0,
+        0,
+        3,
+        9,
+        30,
+        0,
+        12,
+        81,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        9,
+        8,
+        11,
+        0,
+        65,
+        24,
+        0,
+        0
+      ],
+      [
+        8,
+        1,
+        7,
+        8,
+        2,
+        2,
+        0,
+        0,
+        48,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8
+      ]
+    ]
+  },
+  "ttl_audit": {
+    "dropped": [
+      "sttl",
+      "dttl",
+      "ct_state_ttl"
+    ],
+    "without_ttl": {
+      "accuracy": 0.9779559118236473,
+      "precision": 0.9854975457385096,
+      "recall": 0.9743024153523767,
+      "f1": 0.9798680051023237,
+      "confusion": [
+        [
+          7270,
+          130
+        ],
+        [
+          233,
+          8834
+        ]
+      ]
+    },
+    "top_gain_features": {
+      "ct_state_ttl": 0.2421,
+      "sttl": 0.1931,
+      "ct_dst_sport_ltm": 0.07,
+      "proto_arp": 0.0583,
+      "dttl": 0.0357,
+      "service_dns": 0.0356,
+      "proto_udp": 0.0264,
+      "ct_dst_src_ltm": 0.0257,
+      "sloss": 0.0228,
+      "proto_tcp": 0.0193
+    }
+  },
+  "threshold_curve": [
+    {
+      "threshold": 0.05,
+      "false_alarms": 1085,
+      "missed_attacks": 37
+    },
+    {
+      "threshold": 0.1,
+      "false_alarms": 647,
+      "missed_attacks": 62
+    },
+    {
+      "threshold": 0.15,
+      "false_alarms": 462,
+      "missed_attacks": 86
+    },
+    {
+      "threshold": 0.2,
+      "false_alarms": 365,
+      "missed_attacks": 103
+    },
+    {
+      "threshold": 0.25,
+      "false_alarms": 287,
+      "missed_attacks": 120
+    },
+    {
+      "threshold": 0.3,
+      "false_alarms": 229,
+      "missed_attacks": 148
+    },
+    {
+      "threshold": 0.35,
+      "false_alarms": 181,
+      "missed_attacks": 163
+    },
+    {
+      "threshold": 0.4,
+      "false_alarms": 158,
+      "missed_attacks": 184
+    },
+    {
+      "threshold": 0.45,
+      "false_alarms": 138,
+      "missed_attacks": 207
+    },
+    {
+      "threshold": 0.5,
+      "false_alarms": 118,
+      "missed_attacks": 225
+    },
+    {
+      "threshold": 0.55,
+      "false_alarms": 96,
+      "missed_attacks": 249
+    },
+    {
+      "threshold": 0.6,
+      "false_alarms": 79,
+      "missed_attacks": 271
+    },
+    {
+      "threshold": 0.65,
+      "false_alarms": 65,
+      "missed_attacks": 303
+    },
+    {
+      "threshold": 0.7,
+      "false_alarms": 55,
+      "missed_attacks": 333
+    },
+    {
+      "threshold": 0.75,
+      "false_alarms": 44,
+      "missed_attacks": 370
+    },
+    {
+      "threshold": 0.8,
+      "false_alarms": 30,
+      "missed_attacks": 412
+    },
+    {
+      "threshold": 0.85,
+      "false_alarms": 22,
+      "missed_attacks": 483
+    },
+    {
+      "threshold": 0.9,
+      "false_alarms": 16,
+      "missed_attacks": 557
+    },
+    {
+      "threshold": 0.95,
+      "false_alarms": 9,
+      "missed_attacks": 742
+    }
+  ],
+  "features": {
+    "categorical": [
+      "proto",
+      "service",
+      "state"
+    ],
+    "numeric": [
+      "dur",
+      "spkts",
+      "dpkts",
+      "sbytes",
+      "dbytes",
+      "rate",
+      "sttl",
+      "dttl",
+      "sload",
+      "dload",
+      "sloss",
+      "dloss",
+      "sinpkt",
+      "dinpkt",
+      "sjit",
+      "djit",
+      "swin",
+      "stcpb",
+      "dtcpb",
+      "dwin",
+      "tcprtt",
+      "synack",
+      "ackdat",
+      "smean",
+      "dmean",
+      "trans_depth",
+      "response_body_len",
+      "ct_srv_src",
+      "ct_state_ttl",
+      "ct_dst_ltm",
+      "ct_src_dport_ltm",
+      "ct_dst_sport_ltm",
+      "ct_dst_src_ltm",
+      "is_ftp_login",
+      "ct_ftp_cmd",
+      "ct_flw_http_mthd",
+      "ct_src_ltm",
+      "ct_srv_dst",
+      "is_sm_ips_ports"
+    ]
+  },
+  "train_seconds": 28.5
+}
