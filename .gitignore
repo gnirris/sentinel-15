@@ -1,0 +1,18 @@
+# environments
+venv/
+.venv/
+env/
+.env
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+# raw datasets (download separately, see README). artifacts/ and
+# sample_test_flows.csv ARE committed so the app runs with zero setup.
+data/*.csv
+data/*.zip
+*.parquet
+# editor/os
+.DS_Store
+.vscode/
+.idea/
