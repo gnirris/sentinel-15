@@ -77,8 +77,72 @@ def shap_chart(exp: pd.DataFrame) -> go.Figure:
 
 
 @st.cache_resource(show_spinner=False)
-def llm_client(key: str | None):
-    return A.get_client(key)
+def llm_client(provider: str, key: str, base_url: str | None):
+    return A.make_client(provider, key, base_url)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def llm_models(provider: str, key: str, base_url: str | None) -> list[str]:
+    return A.list_models(provider, llm_client(provider, key, base_url))
+
+
+def secret(name: str):
+    try:
+        return st.secrets.get(name) or os.environ.get(name)
+    except Exception:  # no secrets file configured
+        return os.environ.get(name)
+
+
+def llm_sidebar() -> A.LLM | None:
+    """Provider + key + model picker. Server keys come from Streamlit secrets or
+    env vars (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, ...);
+    a visitor's typed key is used only for their session."""
+    st.markdown("### 🤖 LLM analyst")
+    env_pid, env_key = A.key_from_env(secret)
+    names = {pid: p.name + (" · free tier" if p.free else "") for pid, p in A.PROVIDERS.items()}
+    choice = st.selectbox("Provider", ["auto", *A.PROVIDERS],
+                          format_func=lambda k: "Auto-detect from key" if k == "auto" else names[k])
+    typed = st.text_input("API key", type="password",
+                          placeholder="uses the server key" if env_key else "paste any provider's key",
+                          help="Used only for this browser session, never stored. "
+                               "Gemini and Groq give free keys with no card.").strip()
+    if typed:
+        pid = A.detect(typed) if choice == "auto" else choice
+        key = typed
+        if pid is None:
+            st.warning("Couldn't tell which provider that key is for. Pick it above.")
+            return None
+    elif choice not in ("auto", env_pid):
+        pid = choice
+        key = next((secret(v) for v in A.PROVIDERS[pid].env if secret(v)), None)
+    else:
+        pid, key = env_pid, env_key
+    if not key:
+        st.info("Offline: explanations use a template. Add a key for the LLM analyst.",
+                icon="⚪")
+        return None
+
+    base = None
+    if pid == "custom":
+        base = st.text_input("Base URL", value=secret("LLM_BASE_URL") or "",
+                             placeholder="http://localhost:11434/v1") or None
+        if not base:
+            st.warning("Enter the server's OpenAI-compatible base URL.")
+            return None
+    prov = A.PROVIDERS[pid]
+    models = llm_models(pid, key, base)
+    default = secret("LLM_MODEL") or prov.default
+    if models:
+        if default not in models:
+            models = [default, *models] if default else models
+        model = st.selectbox("Model", models, index=models.index(default) if default else 0)
+    else:
+        model = st.text_input("Model", value=default)
+    if not model:
+        return None
+    llm = A.LLM(pid, model, llm_client(pid, key, base))
+    st.success(llm.label, icon="🟢")
+    return llm
 
 
 def show_llm(text: str, evidence: str) -> None:
@@ -120,20 +184,7 @@ with st.sidebar:
     st.metric("Attack recall", f"{b['recall']:.2%}")
     st.caption(f"Trained on {M['n_train']:,} flows · tested on {M['n_test']:,} unseen flows")
 
-    st.markdown("### 🤖 LLM analyst")
-    try:
-        secret_key = st.secrets.get("ANTHROPIC_API_KEY")
-    except Exception:  # no secrets file configured
-        secret_key = None
-    typed = st.text_input("Anthropic API key", type="password",
-                          placeholder="uses the server key" if secret_key else "sk-ant-…",
-                          help="Optional. Used only for this browser session, never stored.")
-    client = llm_client(typed or secret_key or os.environ.get("ANTHROPIC_API_KEY"))
-    if client:
-        st.success(f"Online · {A.MODEL}", icon="🟢")
-    else:
-        st.info("Offline: explanations use a template. Add a key for the LLM analyst.",
-                icon="⚪")
+    client = llm_sidebar()
 
 tab1, tab2, tab4, tab3 = st.tabs(["📡 Live Traffic Simulator", "🗂 Batch CSV Scanner",
                                   "💬 Ask the Analyst", "🧠 Model & AI Ethics"])
@@ -301,7 +352,7 @@ with tab2:
                 st.markdown(ss.reports[rkey])
                 show_llm(ss.reports[rkey], bev)
             elif not client:
-                st.info("Add an Anthropic API key in the sidebar and the LLM analyst will "
+                st.info("Add an LLM API key in the sidebar and the LLM analyst will "
                         "write an incident report for this scan.")
             elif st.button("🤖 Write incident report", type="primary"):
                 ss.reports[rkey] = st.write_stream(A.incident_report(client, bev))
@@ -316,7 +367,7 @@ with tab4:
     st.markdown("Ask about the **current live flow**, the **last batch scan**, or how the "
                 "model works. The analyst answers only from the detector's own numbers.")
     if not client:
-        st.info("The chat needs an Anthropic API key (sidebar). Everything else on this "
+        st.info("The chat needs an LLM API key (sidebar). Everything else on this "
                 "dashboard works without one.")
     else:
         suggestions = ["Why was the current flow flagged (or not)?",
@@ -386,7 +437,8 @@ with tab3:
         "  └─ Stage 1  XGBoost binary      : Normal vs Attack   (threshold adjustable)\n"
         "  └─ Stage 2  XGBoost 9-class     : which attack       (only runs on alerts)\n"
         "  └─ TreeSHAP                     : per-alert explanation, one-hot folded back\n"
-        f"  └─ LLM analyst ({A.MODEL})  : SHAP + numbers → plain English, grounding-checked",
+        f"  └─ LLM analyst ({client.label if client else 'offline'})\n"
+        "       SHAP + numbers → plain English, grounding-checked",
         language="text")
 
     st.markdown("#### Shortcut audit — does it just memorise TTL values?")

@@ -15,12 +15,17 @@ short_description: Explainable AI network intrusion detection (UNSW-NB15)
 
 A two-stage XGBoost detector trained on **UNSW-NB15**, with a dark SOC dashboard and an
 **LLM analyst**: stage 1 decides *is this network flow an attack?*, stage 2 names *which
-kind*, SHAP measures *why*, and Claude turns that evidence into plain English.
+kind*, SHAP measures *why*, and an LLM turns that evidence into plain English.
 
 **The LLM explains, it never decides.** It only sees the detector's numbers (never the
 ground-truth label, IPs or packet contents), and a grounding check flags any field it
 cites that isn't in that evidence. Without an API key the dashboard runs fully, with
 template explanations instead.
+
+**Any LLM provider works:** Anthropic (Claude), OpenAI, Google Gemini, Groq, OpenRouter,
+Mistral, DeepSeek, xAI, or any OpenAI-compatible server (e.g. Ollama). Paste a key in the
+sidebar and the provider is detected from its prefix; the model list is fetched live.
+Gemini and Groq give free keys with no card.
 
 | Tab | What it does |
 |---|---|
@@ -70,11 +75,15 @@ The repo has two front-ends over the same `detector.py`: `app.py` (Gradio) and
 
 1. https://share.streamlit.io/deploy?repository=gnirris/sentinel-15&branch=main&mainModule=streamlit_app.py
 2. Sign in with GitHub → **Advanced settings → Python 3.12**
-3. Optional, for the LLM analyst: in the same Advanced settings box, paste into **Secrets**
+3. Optional, for the LLM analyst: in the same Advanced settings box, paste one key into
+   **Secrets** (any of `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+   `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`),
+   e.g.
    ```toml
-   ANTHROPIC_API_KEY = "sk-ant-..."
+   GEMINI_API_KEY = "AIza..."
+   LLM_MODEL = "gemini-2.5-flash"   # optional
    ```
-   Without it, visitors can paste their own key in the sidebar, or use template mode.
+   Without one, visitors can paste their own key in the sidebar, or use template mode.
 4. **Deploy**
 
 Footprint: 2.6 MB of models, ~320 MB peak RAM.

@@ -1,6 +1,7 @@
 """LLM "SOC analyst" layered on top of the detector.
 
-The XGBoost models make every decision. The LLM (Claude) only *explains* them: it
+The XGBoost models make every decision. The LLM (Claude, GPT, Gemini, Llama via
+Groq, ... — any provider in PROVIDERS) only *explains* them: it
 turns a flow's prediction + SHAP values into plain English, writes incident reports
 for batch scans, and answers questions. It is handed the exact numbers and told to
 use nothing else; `grounding_check` then verifies every field it names really is in
@@ -13,13 +14,12 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
 from train import FEATURES
-
-MODEL = "claude-opus-5-5"
 
 # Plain-English names for the UNSW-NB15 fields the analyst is most likely to cite.
 GLOSSARY = {
@@ -61,22 +61,106 @@ punishing a user based on this alert alone.
 Markdown, no headings above ###."""
 
 
-# ── API plumbing ─────────────────────────────────────────────────────────────
-def get_client(api_key: str | None = None):
-    """An Anthropic client, or None when no key is configured (offline mode)."""
-    key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        return None
-    import anthropic
-    return anthropic.Anthropic(api_key=key, max_retries=2, timeout=90)
+# ── providers ────────────────────────────────────────────────────────────────
+# Anthropic uses its own SDK; every other provider exposes an OpenAI-compatible
+# endpoint, so one OpenAI SDK client with a different base_url covers them all.
+# `default` is only a starting suggestion: the sidebar lists the provider's live
+# models, so new model names work without a code change.
+@dataclass(frozen=True)
+class Provider:
+    name: str
+    env: tuple[str, ...]          # env vars / Streamlit secrets holding its key
+    prefix: tuple[str, ...]       # key prefixes for auto-detection
+    base_url: str | None          # None = SDK default
+    default: str
+    free: bool = False            # has a free tier without a card
 
 
-def _stream(client, messages: list[dict], effort: str, max_tokens: int) -> Iterator[str]:
-    """Stream text from Claude; errors become readable text instead of exceptions."""
+PROVIDERS = {
+    "anthropic": Provider("Anthropic (Claude)", ("ANTHROPIC_API_KEY",), ("sk-ant-",), None,
+                          "claude-opus-5-5"),
+    "openai": Provider("OpenAI (GPT)", ("OPENAI_API_KEY",), ("sk-proj-", "sk-svcacct-"), None,
+                       "gpt-4o-mini"),
+    "gemini": Provider("Google Gemini", ("GEMINI_API_KEY", "GOOGLE_API_KEY"), ("AIza",),
+                       "https://generativelanguage.googleapis.com/v1beta/openai/",
+                       "gemini-2.5-flash", free=True),
+    "groq": Provider("Groq (Llama, Qwen…)", ("GROQ_API_KEY",), ("gsk_",),
+                     "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", free=True),
+    "openrouter": Provider("OpenRouter (any model)", ("OPENROUTER_API_KEY",), ("sk-or-",),
+                           "https://openrouter.ai/api/v1", "openrouter/auto", free=True),
+    "mistral": Provider("Mistral", ("MISTRAL_API_KEY",), (), "https://api.mistral.ai/v1",
+                        "mistral-small-latest", free=True),
+    "deepseek": Provider("DeepSeek", ("DEEPSEEK_API_KEY",), (), "https://api.deepseek.com",
+                         "deepseek-chat"),
+    "xai": Provider("xAI (Grok)", ("XAI_API_KEY",), ("xai-",), "https://api.x.ai/v1", "grok-3-mini"),
+    "custom": Provider("Custom (OpenAI-compatible)", ("LLM_API_KEY",), (), None, ""),
+}
+
+
+@dataclass
+class LLM:
+    provider: str
+    model: str
+    client: object
+
+    @property
+    def label(self) -> str:
+        return f"{PROVIDERS[self.provider].name} · {self.model}"
+
+
+def detect(key: str) -> str | None:
+    """Guess the provider from a key's prefix. Plain `sk-` keys are treated as OpenAI."""
+    key = key.strip()
+    for pid, p in PROVIDERS.items():
+        if any(key.startswith(x) for x in p.prefix):
+            return pid
+    return "openai" if key.startswith("sk-") else None
+
+
+def key_from_env(get=os.environ.get) -> tuple[str, str] | tuple[None, None]:
+    """First (provider, key) configured in env vars / secrets, in PROVIDERS order."""
+    for pid, p in PROVIDERS.items():
+        for var in p.env:
+            if v := get(var):
+                return pid, v
+    return None, None
+
+
+def make_client(provider: str, key: str, base_url: str | None = None):
+    if provider == "anthropic":
+        import anthropic
+        return anthropic.Anthropic(api_key=key, max_retries=2, timeout=90)
+    import openai
+    return openai.OpenAI(api_key=key, base_url=base_url or PROVIDERS[provider].base_url,
+                         max_retries=2, timeout=90)
+
+
+def list_models(provider: str, client) -> list[str]:
+    """Live model ids from the provider; empty list if listing isn't supported."""
+    try:
+        ids = [m.id for m in client.with_options(timeout=10, max_retries=0).models.list()]
+    except Exception:
+        return []
+    if provider == "gemini":
+        ids = [i.removeprefix("models/") for i in ids]
+    skip = ("embed", "tts", "whisper", "dall-e", "image", "audio", "realtime", "moderation",
+            "transcribe", "search", "guard", "veo", "imagen", "aqa")
+    return sorted(i for i in ids if not any(w in i.lower() for w in skip))
+
+
+def _stream(llm: LLM, messages: list[dict], effort: str, max_tokens: int) -> Iterator[str]:
+    """Stream text from whichever provider; errors become readable text, never exceptions."""
+    if llm.provider == "anthropic":
+        yield from _stream_anthropic(llm, messages, effort, max_tokens)
+    else:
+        yield from _stream_openai(llm, messages, max_tokens)
+
+
+def _stream_anthropic(llm: LLM, messages, effort, max_tokens) -> Iterator[str]:
     import anthropic
     try:
-        with client.beta.messages.stream(
-            model=MODEL,
+        with llm.client.beta.messages.stream(
+            model=llm.model,
             max_tokens=max_tokens,
             system=SYSTEM,
             messages=messages,
@@ -93,8 +177,16 @@ def _stream(client, messages: list[dict], effort: str, max_tokens: int) -> Itera
             yield "\n\n_The language model declined this request. The detector's verdict above is unaffected._"
         elif final.stop_reason == "max_tokens":
             yield " …"
+    except anthropic.BadRequestError as e:
+        # Older Claude models reject effort / fallbacks; retry once with the basics.
+        if "effort" in str(e.message) or "fallback" in str(e.message):
+            yield from _stream_anthropic_plain(llm, messages, max_tokens)
+        else:
+            yield f"⚠ Request rejected: {e.message}"
     except anthropic.AuthenticationError:
         yield "⚠ The API key was rejected. Check it in the sidebar or in Streamlit secrets."
+    except anthropic.NotFoundError:
+        yield f"⚠ Model `{llm.model}` was not found for this key. Pick another in the sidebar."
     except anthropic.PermissionDeniedError:
         yield "⚠ This API key is not allowed to use this model."
     except anthropic.RateLimitError:
@@ -103,6 +195,46 @@ def _stream(client, messages: list[dict], effort: str, max_tokens: int) -> Itera
         yield f"⚠ API error {e.status_code}: {e.message}"
     except anthropic.APIConnectionError:
         yield "⚠ Could not reach the API (network error)."
+
+
+def _stream_anthropic_plain(llm: LLM, messages, max_tokens) -> Iterator[str]:
+    import anthropic
+    try:
+        with llm.client.messages.stream(model=llm.model, max_tokens=max_tokens,
+                                        system=SYSTEM, messages=messages) as stream:
+            yield from stream.text_stream
+    except anthropic.APIError as e:
+        yield f"⚠ API error: {getattr(e, 'message', e)}"
+
+
+def _stream_openai(llm: LLM, messages, max_tokens) -> Iterator[str]:
+    import openai
+    try:
+        stream = llm.client.chat.completions.create(
+            model=llm.model, stream=True,
+            messages=[{"role": "system", "content": SYSTEM}, *messages])
+        got = False
+        for chunk in stream:
+            if chunk.choices and (t := chunk.choices[0].delta.content):
+                got = True
+                yield t
+        if not got:
+            yield "_The model returned no text. Try a different model in the sidebar._"
+    except openai.AuthenticationError:
+        yield "⚠ The API key was rejected. Check the key and the provider in the sidebar."
+    except openai.NotFoundError:
+        yield f"⚠ Model `{llm.model}` was not found for this key. Pick another in the sidebar."
+    except openai.PermissionDeniedError:
+        yield "⚠ This API key is not allowed to use this model."
+    except openai.RateLimitError:
+        yield "⚠ Rate limited (or out of free quota). Wait a bit, or switch provider/model."
+    except openai.APIStatusError as e:
+        if "api key" in str(e.body).lower() or "api_key" in str(e.body).lower():
+            yield "⚠ The API key was rejected. Check the key and the provider in the sidebar."
+        else:
+            yield f"⚠ API error {e.status_code}: {e.body or e.message}"[:400]
+    except openai.APIConnectionError:
+        yield "⚠ Could not reach the provider (network error, or wrong base URL)."
 
 
 # ── evidence builders (the only facts the LLM may use) ──────────────────────
@@ -173,30 +305,30 @@ def model_evidence(m: dict) -> str:
 
 
 # ── the three analyst jobs ───────────────────────────────────────────────────
-def explain_flow(client, evidence: str) -> Iterator[str]:
+def explain_flow(llm: LLM, evidence: str) -> Iterator[str]:
     msg = (f"<evidence>\n{evidence}\n</evidence>\n\n"
            "Explain this verdict to the analyst on shift in at most 120 words: "
            "what the flow looks like, the 2–3 reasons that mattered most, how sure the "
            "model is, and one concrete thing a human should check next.")
-    return _stream(client, [{"role": "user", "content": msg}], "low", 2000)
+    return _stream(llm, [{"role": "user", "content": msg}], "low", 2000)
 
 
-def incident_report(client, evidence: str) -> Iterator[str]:
+def incident_report(llm: LLM, evidence: str) -> Iterator[str]:
     msg = (f"<evidence>\n{evidence}\n</evidence>\n\n"
            "Write a short incident report for this scan (at most 250 words) with these "
            "parts in bold: **Summary**, **What was found**, **Confidence and caveats**, "
            "**Recommended next steps** (numbered, for a human). Quote counts exactly.")
-    return _stream(client, [{"role": "user", "content": msg}], "medium", 4000)
+    return _stream(llm, [{"role": "user", "content": msg}], "medium", 4000)
 
 
-def answer(client, history: list[dict], question: str, context: str) -> Iterator[str]:
+def answer(llm: LLM, history: list[dict], question: str, context: str) -> Iterator[str]:
     """Chat turn. Context (model metrics + current flow + current scan) rides along
     with the newest question only, so earlier turns stay byte-identical."""
     msgs = [{"role": h["role"], "content": h["content"]} for h in history[-10:]]
     msgs.append({"role": "user", "content":
                  f"<evidence>\n{context}\n</evidence>\n\nAnalyst question: {question}\n\n"
                  "Answer in at most 150 words. If the evidence cannot answer it, say so."})
-    return _stream(client, msgs, "low", 3000)
+    return _stream(llm, msgs, "low", 3000)
 
 
 # ── offline fallback (no API key) ───────────────────────────────────────────
@@ -219,7 +351,7 @@ def offline_flow(pred: pd.Series, exp: pd.DataFrame) -> str:
         parts.append("Pushed toward intrusion:\n" + "\n".join(bullet(r) for r in up.itertuples()))
     if len(down):
         parts.append("Pushed toward safe:\n" + "\n".join(bullet(r) for r in down.itertuples()))
-    parts.append("_Offline template. Add an Anthropic API key in the sidebar for the "
+    parts.append("_Offline template. Add an LLM API key in the sidebar for the "
                  "LLM analyst's plain-English write-up._")
     return "\n\n".join(parts)
 

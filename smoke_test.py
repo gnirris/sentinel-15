@@ -81,9 +81,20 @@ assert "Offline template" in A.offline_flow(pred, exp)
 f0 = exp.feature.iloc[0]
 assert A.grounding_check(f"`{f0}` was high", ev) == (True, [])
 assert A.grounding_check("`swin` was odd", ev) == (False, ["swin"])   # invented field caught
-assert A.get_client(None) is None or os.environ.get("ANTHROPIC_API_KEY")
+# provider auto-detection from key prefixes
+assert [A.detect(k) for k in ("sk-ant-x", "sk-or-v1-x", "gsk_x", "AIzaX", "xai-x", "sk-proj-x", "sk-x", "zzz")] \
+    == ["anthropic", "openrouter", "groq", "gemini", "xai", "openai", "openai", None]
+assert A.key_from_env({"GROQ_API_KEY": "gsk_1"}.get) == ("groq", "gsk_1")
+assert A.key_from_env({}.get) == (None, None)
 
-os.environ.pop("ANTHROPIC_API_KEY", None)
+# OpenAI-compatible streaming path, against a fake client (no network)
+from types import SimpleNamespace as NS  # noqa: E402
+chunks = [NS(choices=[NS(delta=NS(content=t))]) for t in ("Hel", None, "lo")] + [NS(choices=[])]
+fake = NS(chat=NS(completions=NS(create=lambda **kw: iter(chunks))))
+assert "".join(A._stream(A.LLM("groq", "m", fake), [{"role": "user", "content": "hi"}], "low", 50)) == "Hello"
+
+for v in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY"):
+    os.environ.pop(v, None)
 at = AppTest.from_file("streamlit_app.py", default_timeout=60).run()
 assert not at.exception, at.exception
 assert any("Offline template" in m.value for m in at.markdown)
@@ -92,7 +103,8 @@ print("analyst offline ok: template explanation, grounding guard catches invente
 calls = []
 A._stream = lambda client, msgs, effort, mt: (calls.append(msgs) or
                                               iter([f"Flow flagged because `{f0}` ", "was unusual."]))
-os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test-not-real"
+A.list_models = lambda provider, client: ["gemini-2.5-flash", "gemini-2.5-pro"]
+os.environ["GEMINI_API_KEY"] = "AIza-test-not-real"
 at = AppTest.from_file("streamlit_app.py", default_timeout=60).run()
 next(b for b in at.button if "Explain this flow" in b.label).click().run()
 assert not at.exception, at.exception
@@ -103,5 +115,6 @@ assert not at.exception, at.exception
 at.chat_input[0].set_value("Why was it flagged?").run()
 assert not at.exception, at.exception
 assert len(calls) == 3 and "LAST BATCH SCAN" in calls[-1][-1]["content"]
-os.environ.pop("ANTHROPIC_API_KEY")
+assert any("Google Gemini · gemini-2.5-flash" in s.value for s in at.success)
+os.environ.pop("GEMINI_API_KEY")
 print("analyst online ok: flow explanation, incident report and chat all render")
