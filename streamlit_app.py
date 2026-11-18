@@ -74,6 +74,8 @@ st.markdown(f"""
 .log tr.sel td {{background: {BLUE}; color: #fff;}}
 .logcap {{font-size: .9rem; color: #4A5560; margin: .35rem 0 0;}}
 
+.replay {{margin: 0 0 .9rem; padding: .55rem .9rem; max-width: 80ch; font-size: .95rem;
+           background: #FAF0D7; border: 1px solid #E6D3A3; color: {INK};}}
 .note {{background: {PAPER}; border: 1px solid {RULE}; padding: .9rem 1.1rem;}}
 .err {{color: {RED}; font-weight: 600;}}
 div[data-testid="stMetricValue"] {{font-size: 1.4rem; font-weight: 700;}}
@@ -285,6 +287,12 @@ with tab1:
 
     def reset() -> None:
         ss.idx, ss.history, ss.playing = 0, [], False
+
+    st.markdown('<p class="replay"><strong>This is a replay, not your network.</strong> '
+                'The flows are 500 recorded connections from the UNSW-NB15 test set, which '
+                'the model never saw in training, played back as if they were arriving '
+                'live. Nothing is captured from your computer or connection.</p>',
+                unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns([1, 1, 1, 3])
     c1.button("⏸ Pause" if ss.playing else "▶ Play", width="stretch", type="primary",
