@@ -1,13 +1,16 @@
-"""SENTINEL-15 — SOC dashboard for the two-stage UNSW-NB15 intrusion detector.
+"""SENTINEL-15 — SOC dashboard for the two-stage UNSW-NB15 intrusion detector,
+with an LLM analyst (Claude) that explains its decisions in plain English.
 Run: streamlit run streamlit_app.py"""
 from __future__ import annotations
 
+import os
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+import analyst as A
 from detector import MAX_ROWS, SAMPLE_CSV, Detector
 
 st.set_page_config(page_title="SENTINEL-15 · Intrusion Detection", page_icon="🛡️",
@@ -73,15 +76,39 @@ def shap_chart(exp: pd.DataFrame) -> go.Figure:
     return dark(fig, 280)
 
 
+@st.cache_resource(show_spinner=False)
+def llm_client(key: str | None):
+    return A.get_client(key)
+
+
+def show_llm(text: str, evidence: str) -> None:
+    """Render an LLM answer with its hallucination check and the evidence it saw."""
+    ok, bad = A.grounding_check(text, evidence)
+    if ok:
+        st.caption("✅ Grounding check passed: every field the LLM cited is in the "
+                   "detector's evidence.")
+    else:
+        st.warning("⚠ Grounding check failed: the LLM cited "
+                   + ", ".join(f"`{b}`" for b in bad)
+                   + ", which the detector never gave it. Treat that part as unreliable.")
+    with st.expander("Evidence the LLM was given"):
+        st.code(evidence, language="text")
+
+
 det = load_detector()
 M = det.metrics
+ss = st.session_state
+ss.setdefault("explained", {})
+ss.setdefault("reports", {})
+ss.setdefault("chat", [])
 
 # ── header + sidebar ──────────────────────────────────────────────────────
 st.markdown('<div class="hdr">security operations center · unsw-nb15</div>',
             unsafe_allow_html=True)
 st.title("🛡️ SENTINEL-15")
 st.caption("Two-stage XGBoost network intrusion detector — stage 1 flags attacks, "
-           "stage 2 names them, SHAP explains every alert.")
+           "stage 2 names them, SHAP measures why, and an LLM analyst explains it "
+           "in plain English.")
 
 with st.sidebar:
     st.markdown("### ⚙ Detector")
@@ -93,14 +120,28 @@ with st.sidebar:
     st.metric("Attack recall", f"{b['recall']:.2%}")
     st.caption(f"Trained on {M['n_train']:,} flows · tested on {M['n_test']:,} unseen flows")
 
-tab1, tab2, tab3 = st.tabs(["📡 Live Traffic Simulator", "🗂 Batch CSV Scanner",
-                            "🧠 Model & AI Ethics"])
+    st.markdown("### 🤖 LLM analyst")
+    try:
+        secret_key = st.secrets.get("ANTHROPIC_API_KEY")
+    except Exception:  # no secrets file configured
+        secret_key = None
+    typed = st.text_input("Anthropic API key", type="password",
+                          placeholder="uses the server key" if secret_key else "sk-ant-…",
+                          help="Optional. Used only for this browser session, never stored.")
+    client = llm_client(typed or secret_key or os.environ.get("ANTHROPIC_API_KEY"))
+    if client:
+        st.success(f"Online · {A.MODEL}", icon="🟢")
+    else:
+        st.info("Offline: explanations use a template. Add a key for the LLM analyst.",
+                icon="⚪")
+
+tab1, tab2, tab4, tab3 = st.tabs(["📡 Live Traffic Simulator", "🗂 Batch CSV Scanner",
+                                  "💬 Ask the Analyst", "🧠 Model & AI Ethics"])
 
 # ── TAB 1: live simulator ─────────────────────────────────────────────────
 with tab1:
     sample = load_sample()
     flows, _ = Detector.prepare(sample)
-    ss = st.session_state
     ss.setdefault("idx", 0)
     ss.setdefault("playing", False)
     ss.setdefault("history", [])
@@ -149,9 +190,10 @@ with tab1:
         m[4].metric("Bytes ↑/↓", f"{human(r.sbytes)}/{human(r.dbytes)}")
         m[5].metric("Src TTL", int(r.sttl))
 
+        exp = det.explain(row)
         left, right = st.columns([1, 1])
         with left:
-            st.plotly_chart(shap_chart(det.explain(row)), width="stretch", config=PLOTLY_CFG,
+            st.plotly_chart(shap_chart(exp), width="stretch", config=PLOTLY_CFG,
                             key=f"shap{ss.idx}")
         with right:
             h = pd.DataFrame(ss.history)
@@ -172,6 +214,23 @@ with tab1:
         k[0].metric("Flows inspected", len(h))
         k[1].metric("Alerts raised", int((h.p >= threshold).sum()))
         k[2].metric("Alert rate", f"{(h.p >= threshold).mean():.0%}")
+
+        # ── LLM analyst ──
+        ev = A.flow_evidence(r, pred, exp, threshold)
+        ss.flow_ev = f"current live flow #{ss.idx}:\n{ev}"
+        st.markdown("##### 🤖 Analyst")
+        key = (ss.idx, threshold)
+        if key in ss.explained:
+            st.markdown(ss.explained[key])
+            show_llm(ss.explained[key], ev)
+        elif client and not ss.playing and st.button("🤖 Explain this flow with the LLM",
+                                                     key=f"explain{ss.idx}", type="primary"):
+            ss.explained[key] = st.write_stream(A.explain_flow(client, ev))
+            show_llm(ss.explained[key], ev)
+        else:
+            st.markdown(A.offline_flow(pred, exp))
+            if client and ss.playing:
+                st.caption("Pause the stream to ask the LLM about this flow.")
 
     live()
 
@@ -229,6 +288,63 @@ with tab2:
                                report.to_csv(index=False).encode(),
                                file_name=f"flagged_{name}", mime="text/csv")
 
+            # ── LLM incident report ──
+            top = report.head(30)
+            reasons = pd.Series(
+                [f for i in top.index for f in det.explain(df.loc[[i]]).feature],
+                dtype=object).value_counts().head(8)
+            bev = A.batch_evidence(name, df, res, threshold, reasons)
+            ss.batch_ev = bev
+            st.markdown("##### 🤖 Incident report")
+            rkey = (name, len(df), threshold)
+            if rkey in ss.reports:
+                st.markdown(ss.reports[rkey])
+                show_llm(ss.reports[rkey], bev)
+            elif not client:
+                st.info("Add an Anthropic API key in the sidebar and the LLM analyst will "
+                        "write an incident report for this scan.")
+            elif st.button("🤖 Write incident report", type="primary"):
+                ss.reports[rkey] = st.write_stream(A.incident_report(client, bev))
+                show_llm(ss.reports[rkey], bev)
+            if rkey in ss.reports:
+                st.download_button("⬇ Download incident report (Markdown)",
+                                   ss.reports[rkey].encode(),
+                                   file_name=f"incident_{name}.md", mime="text/markdown")
+
+# ── TAB 4: chat with the analyst ──────────────────────────────────────────
+with tab4:
+    st.markdown("Ask about the **current live flow**, the **last batch scan**, or how the "
+                "model works. The analyst answers only from the detector's own numbers.")
+    if not client:
+        st.info("The chat needs an Anthropic API key (sidebar). Everything else on this "
+                "dashboard works without one.")
+    else:
+        suggestions = ["Why was the current flow flagged (or not)?",
+                       "Summarise the last batch scan for my manager.",
+                       "Which attack types does this model struggle with, and why?",
+                       "What would happen if I lowered the alert threshold to 0.2?"]
+        cols = st.columns(len(suggestions))
+        picked = next((q for c, q in zip(cols, suggestions)
+                       if c.button(q, width="stretch")), None)
+        for msg in ss.chat:
+            with st.chat_message(msg["role"], avatar="🛡️" if msg["role"] == "assistant" else None):
+                st.markdown(msg["content"])
+        q = st.chat_input("Ask the analyst…") or picked
+        if q:
+            context = "\n\n".join(x for x in (
+                "MODEL:\n" + A.model_evidence(M),
+                ss.get("flow_ev"),
+                ("LAST BATCH SCAN:\n" + ss.batch_ev) if ss.get("batch_ev") else None) if x)
+            with st.chat_message("user"):
+                st.markdown(q)
+            with st.chat_message("assistant", avatar="🛡️"):
+                reply = st.write_stream(A.answer(client, ss.chat, q, context))
+                show_llm(reply, context)
+            ss.chat += [{"role": "user", "content": q}, {"role": "assistant", "content": reply}]
+        if ss.chat and st.button("Clear chat"):
+            ss.chat = []
+            st.rerun()
+
 # ── TAB 3: model + ethics ─────────────────────────────────────────────────
 with tab3:
     b, mc, audit = M["binary"], M["multiclass"], M["ttl_audit"]
@@ -269,7 +385,8 @@ with tab3:
         "       └─ 39 numeric flow statistics → passthrough\n"
         "  └─ Stage 1  XGBoost binary      : Normal vs Attack   (threshold adjustable)\n"
         "  └─ Stage 2  XGBoost 9-class     : which attack       (only runs on alerts)\n"
-        "  └─ TreeSHAP                     : per-alert explanation, one-hot folded back",
+        "  └─ TreeSHAP                     : per-alert explanation, one-hot folded back\n"
+        f"  └─ LLM analyst ({A.MODEL})  : SHAP + numbers → plain English, grounding-checked",
         language="text")
 
     st.markdown("#### Shortcut audit — does it just memorise TTL values?")
@@ -306,6 +423,25 @@ with tab3:
     fig.update_layout(title=f"Errors on {M['n_test']:,} test flows vs. alert threshold",
                       xaxis_title="threshold", yaxis_title="flows", legend=dict(orientation="h"))
     st.plotly_chart(dark(fig, 320), width="stretch", config=PLOTLY_CFG)
+
+    st.markdown("#### 🤖 The LLM layer: explains, never decides")
+    l1, l2 = st.columns(2)
+    l1.markdown(
+        "- **XGBoost decides, the LLM explains.** The verdict, probability and category "
+        "come from the trained models. The LLM is only handed those numbers and the SHAP "
+        "values, and is told to use nothing else.\n"
+        "- **Why not let the LLM detect attacks?** It is slower, costs money per flow, "
+        "can't be audited like a tree model, and has no measured accuracy on this data. "
+        "A 98%-accurate tree model plus an LLM translator gets the best of both.\n"
+        "- **It never sees the answer key.** Ground-truth labels are removed from what it reads.")
+    l2.markdown(
+        "- **Hallucination guard.** Every field the LLM names is checked against the "
+        "evidence it was given; an invented reason is flagged in yellow, not hidden.\n"
+        "- **Calibrated language.** It must call low-confidence alerts uncertain and "
+        "recommend human investigation, never automatic blocking.\n"
+        "- **Privacy.** Only flow metadata is sent to the LLM: no IPs, no packet "
+        "contents. Without an API key the dashboard falls back to a template, so it "
+        "never depends on a third-party service to detect anything.")
 
     e1, e2 = st.columns(2)
     e1.markdown(

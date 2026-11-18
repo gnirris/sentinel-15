@@ -13,14 +13,20 @@ short_description: Explainable AI network intrusion detection (UNSW-NB15)
 
 # 🛡️ SENTINEL-15 — explainable network intrusion detection
 
-A two-stage XGBoost detector trained on **UNSW-NB15**, with a dark SOC dashboard built in Gradio:
-stage 1 decides *is this network flow an attack?*, stage 2 names *which kind*, and
-every alert is explained with SHAP.
+A two-stage XGBoost detector trained on **UNSW-NB15**, with a dark SOC dashboard and an
+**LLM analyst**: stage 1 decides *is this network flow an attack?*, stage 2 names *which
+kind*, SHAP measures *why*, and Claude turns that evidence into plain English.
+
+**The LLM explains, it never decides.** It only sees the detector's numbers (never the
+ground-truth label, IPs or packet contents), and a grounding check flags any field it
+cites that isn't in that evidence. Without an API key the dashboard runs fully, with
+template explanations instead.
 
 | Tab | What it does |
 |---|---|
 | 📡 Live Traffic Simulator | Streams held-out flows; SAFE / INTRUSION banner, confidence, category, top-5 SHAP reasons |
-| 🗂 Batch CSV Scanner | Upload a UNSW-NB15 CSV (or 1-click sample), threat charts, downloadable flagged report |
+| 🗂 Batch CSV Scanner | Upload a UNSW-NB15 CSV (or 1-click sample), threat charts, downloadable flagged report, LLM incident report |
+| 💬 Ask the Analyst | Chat with the LLM about the current flow, the last scan, or the model itself |
 | 🧠 Model & AI Ethics | Real test metrics, confusion matrix, TTL shortcut audit, false-alarm trade-off, privacy |
 
 ## Results (16,467 held-out flows)
@@ -63,7 +69,13 @@ The repo has two front-ends over the same `detector.py`: `app.py` (Gradio) and
 `streamlit_app.py` (Streamlit). Streamlit Community Cloud hosts the Streamlit one free:
 
 1. https://share.streamlit.io/deploy?repository=gnirris/sentinel-15&branch=main&mainModule=streamlit_app.py
-2. Sign in with GitHub → **Advanced settings → Python 3.12** → **Deploy**
+2. Sign in with GitHub → **Advanced settings → Python 3.12**
+3. Optional, for the LLM analyst: in the same Advanced settings box, paste into **Secrets**
+   ```toml
+   ANTHROPIC_API_KEY = "sk-ant-..."
+   ```
+   Without it, visitors can paste their own key in the sidebar, or use template mode.
+4. **Deploy**
 
 Footprint: 2.6 MB of models, ~320 MB peak RAM.
 
@@ -72,6 +84,6 @@ Other hosts: `render.yaml` (Render, needs a card on file) and the header block a
 
 ## Files
 
-`train.py` training + evaluation · `detector.py` inference + SHAP · `app.py` Gradio dashboard · `streamlit_app.py` Streamlit dashboard ·
+`train.py` training + evaluation · `detector.py` inference + SHAP · `analyst.py` LLM analyst + grounding check · `app.py` Gradio dashboard · `streamlit_app.py` Streamlit dashboard ·
 `smoke_test.py` headless test · `artifacts/` models + `metrics.json` ·
 `sample_test_flows.csv` 500 held-out demo flows · `docs/screenshots/`
