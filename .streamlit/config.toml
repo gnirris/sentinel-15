@@ -1,10 +1,13 @@
 [theme]
-base = "dark"
-primaryColor = "#00e5ff"
-backgroundColor = "#0a0e14"
-secondaryBackgroundColor = "#111823"
-textColor = "#d3dde8"
-font = "monospace"
+# Wireshark-inspired light console. Accents are the four T568B Ethernet pair
+# colours: blue (interactive), green (safe), orange (threshold), brown (secondary).
+base = "light"
+primaryColor = "#2462A8"
+backgroundColor = "#EEF1F3"
+secondaryBackgroundColor = "#E2E7EB"
+textColor = "#15191E"
+font = "Archivo:https://fonts.googleapis.com/css2?family=Archivo:wght@100..900&display=swap"
+chartCategoricalColors = ["#2462A8", "#E07020", "#2F8F46", "#7B4B2A", "#C8102E", "#6A5ACD", "#2A9D8F", "#A0306E", "#B8860B", "#5C6770"]
 
 [server]
 maxUploadSize = 100

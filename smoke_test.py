@@ -62,7 +62,7 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 at = AppTest.from_file("streamlit_app.py", default_timeout=60).run()
 assert not at.exception, at.exception
 next(b for b in at.button if "Step" in b.label).click().run()
-next(b for b in at.button if "Load Sample" in b.label).click().run()
+next(b for b in at.button if "Scan the sample log" in b.label).click().run()
 assert not at.exception, at.exception
 assert any("Intrusions" in mm.label for mm in at.metric)
 print("streamlit app ok: all tabs render, sample scan works")
@@ -95,7 +95,10 @@ assert "".join(A._stream(A.LLM("groq", "m", fake), [{"role": "user", "content": 
 
 for v in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY"):
     os.environ.pop(v, None)
-at = AppTest.from_file("streamlit_app.py", default_timeout=60).run()
+at = AppTest.from_file("streamlit_app.py", default_timeout=60)
+for v in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY"):
+    at.secrets[v] = ""            # ignore a real local .streamlit/secrets.toml
+at.run()
 assert not at.exception, at.exception
 assert any("Offline template" in m.value for m in at.markdown)
 print("analyst offline ok: template explanation, grounding guard catches invented fields")
@@ -106,15 +109,15 @@ A._stream = lambda client, msgs, effort, mt: (calls.append(msgs) or
 A.list_models = lambda provider, client: ["gemini-2.5-flash", "gemini-2.5-pro"]
 os.environ["GEMINI_API_KEY"] = "AIza-test-not-real"
 at = AppTest.from_file("streamlit_app.py", default_timeout=60).run()
-next(b for b in at.button if "Explain this flow" in b.label).click().run()
+next(b for b in at.button if "Explain this verdict" in b.label).click().run()
 assert not at.exception, at.exception
 assert any("Grounding check passed" in c.value for c in at.caption)
-next(b for b in at.button if "Load Sample" in b.label).click().run()
+next(b for b in at.button if "Scan the sample log" in b.label).click().run()
 next(b for b in at.button if "incident report" in b.label).click().run()
 assert not at.exception, at.exception
 at.chat_input[0].set_value("Why was it flagged?").run()
 assert not at.exception, at.exception
 assert len(calls) == 3 and "LAST BATCH SCAN" in calls[-1][-1]["content"]
-assert any("Google Gemini · gemini-3.5-flash-lite" in s.value for s in at.success)
+assert any("Google Gemini (gemini-3.5-flash-lite)" in s.value for s in at.success), [s.value for s in at.success]
 os.environ.pop("GEMINI_API_KEY")
 print("analyst online ok: flow explanation, incident report and chat all render")

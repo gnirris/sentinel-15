@@ -105,7 +105,7 @@ class LLM:
 
     @property
     def label(self) -> str:
-        return f"{PROVIDERS[self.provider].name} · {self.model}"
+        return f"{PROVIDERS[self.provider].name} ({self.model})"
 
 
 def detect(key: str) -> str | None:
@@ -332,7 +332,7 @@ def answer(llm: LLM, history: list[dict], question: str, context: str) -> Iterat
 
 
 # ── offline fallback (no API key) ───────────────────────────────────────────
-def offline_flow(pred: pd.Series, exp: pd.DataFrame) -> str:
+def offline_flow(pred: pd.Series, exp: pd.DataFrame, hint: bool = True) -> str:
     up = exp[exp.shap > 0].head(3)
     down = exp[exp.shap < 0].head(2)
     sure = "confident" if max(pred.p_attack, 1 - pred.p_attack) >= .9 else "unsure"
@@ -351,8 +351,9 @@ def offline_flow(pred: pd.Series, exp: pd.DataFrame) -> str:
         parts.append("Pushed toward intrusion:\n" + "\n".join(bullet(r) for r in up.itertuples()))
     if len(down):
         parts.append("Pushed toward safe:\n" + "\n".join(bullet(r) for r in down.itertuples()))
-    parts.append("_Offline template. Add an LLM API key in the sidebar for the "
-                 "LLM analyst's plain-English write-up._")
+    if hint:
+        parts.append("_Offline template. Add an LLM API key in the sidebar for the "
+                     "LLM analyst's plain-English write-up._")
     return "\n\n".join(parts)
 
 
