@@ -1,6 +1,19 @@
+---
+title: SENTINEL-15
+emoji: 🛡️
+colorFrom: gray
+colorTo: blue
+sdk: gradio
+sdk_version: 6.32.0
+python_version: "3.12"
+app_file: app.py
+pinned: false
+short_description: Explainable AI network intrusion detection (UNSW-NB15)
+---
+
 # 🛡️ SENTINEL-15 — explainable network intrusion detection
 
-A two-stage XGBoost detector trained on **UNSW-NB15**, with a dark SOC dashboard:
+A two-stage XGBoost detector trained on **UNSW-NB15**, with a dark SOC dashboard built in Gradio:
 stage 1 decides *is this network flow an attack?*, stage 2 names *which kind*, and
 every alert is explained with SHAP.
 
@@ -25,7 +38,7 @@ near-identical in this dataset; both are still detected as attacks by stage 1.
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run app.py            # http://localhost:8501
+python app.py                   # http://localhost:7860
 ```
 
 Models are already in `artifacts/`, so this works with no dataset download.
@@ -40,21 +53,23 @@ Put `UNSW_NB15_training-set.csv` and `UNSW_NB15_testing-set.csv`
 ### Test
 
 ```bash
-python smoke_test.py   # inference on all 500 sample flows, hostile input, full headless app run
+python smoke_test.py   # inference on all 500 sample flows, hostile input, every UI handler
 ```
 
-## Deploy (Streamlit Community Cloud, free)
+## Deploy (Hugging Face Spaces, free)
 
-1. Push this folder to a **public GitHub repo** (`artifacts/` and `sample_test_flows.csv`
-   must be committed; raw datasets are git-ignored).
-2. https://share.streamlit.io → **Create app** → pick the repo, branch `main`, file `app.py`.
-3. **Advanced settings → Python 3.12** → Deploy.
+This README's header block is the Space config, so the repo deploys as-is:
 
-Footprint: 2.7 MB of models, ~320 MB peak RAM while serving, so it fits the free tier and a
-512 MB Render container.
+```bash
+hf auth login                                   # once, with a write token
+hf repos create <user>/sentinel-15 --type space --space-sdk gradio
+hf upload <user>/sentinel-15 . . --repo-type space --exclude ".venv/*" "data/*.csv"
+```
+
+Footprint: 2.6 MB of models, ~360 MB peak RAM while serving, so it fits the free CPU tier.
 
 ## Files
 
-`train.py` training + evaluation · `detector.py` inference + SHAP · `app.py` dashboard ·
+`train.py` training + evaluation · `detector.py` inference + SHAP · `app.py` Gradio dashboard ·
 `smoke_test.py` headless test · `artifacts/` models + `metrics.json` ·
 `sample_test_flows.csv` 500 held-out demo flows · `docs/screenshots/`
