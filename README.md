@@ -13,6 +13,8 @@ short_description: Explainable AI network intrusion detection (UNSW-NB15)
 
 # 🛡️ SENTINEL-15 — explainable network intrusion detection
 
+**Live: https://gnirris.xyz** (nothing to install; the detector runs in your browser)
+
 A two-stage XGBoost detector trained on **UNSW-NB15**, with a dark SOC dashboard and an
 **LLM analyst**: stage 1 decides *is this network flow an attack?*, stage 2 names *which
 kind*, SHAP measures *why*, and an LLM turns that evidence into plain English.
@@ -44,7 +46,31 @@ Gemini and Groq give free keys with no card.
 Weak classes: Analysis and Backdoor (F1 < 0.1). Their flows are statistically
 near-identical in this dataset; both are still detected as attacks by stage 1.
 
-## Run locally
+## How the website works (`web/`)
+
+The models are trained in Python, then **run in the visitor's browser**:
+
+1. `export_web.py` exports both XGBoost stages, the one-hot encoding rules, the 500 demo
+   flows and the metrics as gzipped JSON.
+2. `web/src/lib/model.ts` re-implements the encoding, XGBoost prediction (float32, like
+   XGBoost itself) and exact TreeSHAP in TypeScript.
+3. `web/test/verify.ts` checks the TypeScript port against Python on every sample flow:
+   max difference 0.00001, zero changed verdicts, identical top-5 reasons.
+
+So uploaded CSVs are scored locally and never leave the browser. The React app (Vite +
+TypeScript, no UI framework, hand-drawn SVG charts) talks to the LLM straight from the
+browser with the visitor's own key, or through `web/public/api/llm.php`, a small PHP proxy
+that keeps the site's key on the server, forces SENTINEL's system prompt, requires the
+detector's evidence and rate-limits per visitor.
+
+```bash
+cd web && npm install
+npm run verify      # TypeScript model == Python model
+npm run dev         # http://localhost:5173
+./deploy.sh <cpanel-user> <server>   # build, verify, upload over SSH
+```
+
+## Run locally (Python dashboards)
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
@@ -93,6 +119,6 @@ Other hosts: `render.yaml` (Render, needs a card on file) and the header block a
 
 ## Files
 
-`train.py` training + evaluation · `detector.py` inference + SHAP · `analyst.py` LLM analyst + grounding check · `app.py` Gradio dashboard · `streamlit_app.py` Streamlit dashboard ·
+`train.py` training + evaluation · `export_web.py` model → JSON for the browser · `web/` React site · `detector.py` inference + SHAP · `analyst.py` LLM analyst + grounding check · `app.py` Gradio dashboard · `streamlit_app.py` Streamlit dashboard ·
 `smoke_test.py` headless test · `artifacts/` models + `metrics.json` ·
 `sample_test_flows.csv` 500 held-out demo flows · `docs/screenshots/`
