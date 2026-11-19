@@ -1,9 +1,13 @@
 """Export the trained detector for the React front-end (web/), which runs the
 models in the visitor's browser. Writes web/public/model/:
 
-  model.json    both stages: one-hot rules + every tree as packed arrays
-  flows.json    the 500 held-out demo flows
-  metrics.json  test metrics (copied)
+  binary.json.gz  stage 1 + shared fields (small: the site shows as soon as it lands)
+  multi.json.gz   stage 2, the 9-class attack-type model (streams in behind it)
+  flows.json.gz   the 500 held-out demo flows
+  metrics.json    test metrics (copied)
+
+The .gz files are compressed here rather than by the web server, because
+shared hosting doesn't reliably compress responses; the browser unpacks them.
 
 and web/test/reference.json: Python's own margins and SHAP values for every
 sample flow, which web/test/verify.ts checks the JavaScript port against.
@@ -11,6 +15,7 @@ Run after train.py:  python export_web.py
 """
 from __future__ import annotations
 
+import gzip
 import json
 import shutil
 from pathlib import Path
@@ -66,6 +71,11 @@ def base_margins(booster: xgb.Booster, objective_logistic: bool) -> list[float]:
     return base
 
 
+def write_gz(path: Path, obj) -> None:
+    data = json.dumps(obj, separators=(",", ":")).encode()
+    path.write_bytes(gzip.compress(data, compresslevel=9, mtime=0))
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     (WEB / "test").mkdir(exist_ok=True)
@@ -78,16 +88,16 @@ def main() -> None:
     mbooster = mpipe.named_steps["model"].get_booster()
     mtrees, minfo = trees(mbooster)
 
-    model = {
+    for old in ("model.json", "flows.json"):
+        (OUT / old).unlink(missing_ok=True)
+    write_gz(OUT / "binary.json.gz", {
         "features": FEATURES, "categorical": CATEGORICAL, "numeric": NUMERIC,
         "binary": {**encoder(bpipe.named_steps["prep"]),
                    "base": base_margins(bbooster, True)[0], "trees": btrees,
-                   "source": list(d.source)},
-        "multi": {**encoder(mpipe.named_steps["prep"]),
-                  "base": base_margins(mbooster, False), "trees": mtrees,
-                  "tree_class": minfo, "classes": list(d.classes)},
-    }
-    (OUT / "model.json").write_text(json.dumps(model, separators=(",", ":")))
+                   "source": list(d.source)}})
+    write_gz(OUT / "multi.json.gz", {**encoder(mpipe.named_steps["prep"]),
+                                     "base": base_margins(mbooster, False), "trees": mtrees,
+                                     "tree_class": minfo, "classes": list(d.classes)})
     shutil.copy(ART / "metrics.json", OUT / "metrics.json")
 
     # Demo flows: numbers stay numbers, NaN -> null
@@ -96,7 +106,7 @@ def main() -> None:
     assert not missing
     keep = FEATURES + ["attack_cat", "label"]
     rows = flows[keep].replace({np.nan: None}).to_dict("records")
-    (OUT / "flows.json").write_text(json.dumps(rows, separators=(",", ":")))
+    write_gz(OUT / "flows.json.gz", rows)
 
     # Answer key for the JS port
     Zb = bpipe.named_steps["prep"].transform(flows[FEATURES])

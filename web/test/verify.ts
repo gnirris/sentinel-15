@@ -1,18 +1,20 @@
 // Checks the JavaScript port against Python on all 500 sample flows.
 // Run: node --experimental-strip-types test/verify.ts   (from web/)
 import { readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import {
-  binaryMargin, clean, explain, loadModel, multiProba, predict, shapColumns, type Flow, type ModelData,
+  binaryMargin, clean, explain, loadModel, multiProba, predict, shapColumns, withMulti, type Flow, type ModelData,
 } from "../src/lib/model.ts";
 
 const load = (p: string) => JSON.parse(readFileSync(new URL(p, import.meta.url), "utf8"));
-const model: ModelData = loadModel(load("../public/model/model.json"));
-const flows: Flow[] = load("../public/model/flows.json");
+const loadGz = (p: string) => JSON.parse(gunzipSync(readFileSync(new URL(p, import.meta.url))).toString("utf8"));
+const model: ModelData = withMulti(loadModel(loadGz("../public/model/binary.json.gz")), loadGz("../public/model/multi.json.gz"));
+const flows: Flow[] = loadGz("../public/model/flows.json.gz");
 const ref = load("./reference.json");
 
 // encode() is internal; reach it through the exported pieces
 const enc = (raw: Flow, stage: "binary" | "multi") => {
-  const s = model[stage], row = clean(raw, model), x = new Float32Array(s.n_cols);
+  const s = model[stage]!, row = clean(raw, model), x = new Float32Array(s.n_cols);
   for (const c of model.categorical) { const col = s.cat[c][String(row[c])]; if (col !== undefined) x[col] = 1; }
   for (const n of model.numeric) x[s.num[n]] = row[n] as number;
   return x;

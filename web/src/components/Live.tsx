@@ -53,6 +53,7 @@ export default function Live({ model, flows, threshold, llm, onEvidence }: {
   const step = () => { setPlaying(false); setIdx((i) => (i + 1) % flows.length); };
   const reset = () => { setPlaying(false); setIdx(0); setSeen([0]); };
 
+  const naming = Number.isNaN(pred.categoryConf);   // stage 2 still downloading
   const unsure = pred.categoryConf < 0.5;
   const flowLine = `${row.proto}/${row.service}, ${row.state} state, ${(row.dur as number).toFixed(2)} s, ` +
     `${human(row.sbytes as number)} out in ${row.spkts} packets, ${human(row.dbytes as number)} back in ${row.dpkts}, ` +
@@ -81,8 +82,9 @@ export default function Live({ model, flows, threshold, llm, onEvidence }: {
         <p className="word">{pred.intrusion ? pred.category + (unsure ? "?" : "") : "Normal"}</p>
         <p className="line">{pred.intrusion
           ? `Flow ${idx} looks like an attack (${pct(pred.pAttack)} likely). ` +
-            (unsure ? `The type is a guess: only ${pct(pred.categoryConf)} sure it is ${pred.category}.`
-                    : `${pct(pred.categoryConf)} sure it is ${pred.category}.`)
+            (naming ? "Loading the attack-type model…"
+              : unsure ? `The type is a guess: only ${pct(pred.categoryConf)} sure it is ${pred.category}.`
+                       : `${pct(pred.categoryConf)} sure it is ${pred.category}.`)
           : `Flow ${idx} looks like normal traffic (${pct(pred.pAttack)} chance of attack).`}</p>
         <p className="flow">{flowLine}</p>
       </section>

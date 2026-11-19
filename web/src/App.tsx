@@ -6,7 +6,20 @@ import Scan from "./components/Scan";
 import Settings from "./components/Settings";
 import { modelEvidence, type Metrics } from "./lib/analyst";
 import { PROVIDERS, serverStatus, type LLMConfig } from "./lib/llm";
-import { loadModel, type Flow, type ModelData } from "./lib/model";
+import { loadModel, withMulti, type Flow, type ModelData } from "./lib/model";
+
+/** Fetch a JSON file we pre-gzipped at export time. If the server already
+ *  decoded it (some hosts send .gz with Content-Encoding), parse it directly. */
+async function fetchJson(path: string): Promise<unknown> {
+  const r = await fetch(new URL(`model/${path}`, document.baseURI));
+  if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+  const buf = new Uint8Array(await r.arrayBuffer());
+  if (buf[0] === 0x1f && buf[1] === 0x8b) {
+    const s = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return JSON.parse(await new Response(s).text());
+  }
+  return JSON.parse(new TextDecoder().decode(buf));
+}
 
 const TABS = [
   ["live", "Live traffic"], ["scan", "Scan a log file"], ["ask", "Ask the analyst"], ["how", "How it works"],
@@ -26,12 +39,13 @@ export default function App() {
   const [scanEv, setScanEv] = useState<string | null>(null);
 
   useEffect(() => {
-    const get = (p: string) => fetch(new URL(`model/${p}`, document.baseURI)).then((r) => {
-      if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`);
-      return r.json();
-    });
-    Promise.all([get("model.json"), get("flows.json"), get("metrics.json")])
-      .then(([m, f, x]) => setData({ model: loadModel(m), flows: f, metrics: x }))
+    // Stage 1 + flows (~0.3 MB) make the site usable; stage 2 (~1.5 MB) follows.
+    const multi = fetchJson("multi.json.gz");
+    Promise.all([fetchJson("binary.json.gz"), fetchJson("flows.json.gz"), fetchJson("metrics.json")])
+      .then(([m, f, x]) => {
+        setData({ model: loadModel(m), flows: f as Flow[], metrics: x as Metrics });
+        return multi.then((mj) => setData((d) => d && { ...d, model: withMulti(d.model, mj) }));
+      })
       .catch((e) => setLoadError(String(e.message ?? e)));
     serverStatus().then(setServerModel);
   }, []);
@@ -48,7 +62,7 @@ export default function App() {
   const llmLabel = llm ? `${PROVIDERS[llm.provider].name} (${llm.model})` : "off (template text)";
 
   if (loadError) return <p className="loading err">The detector couldn't load ({loadError}). Reload the page to try again.</p>;
-  if (!data) return <p className="loading">Loading the detector into your browser (about 1.5 MB)…</p>;
+  if (!data) return <p className="loading">Loading the detector into your browser…</p>;
 
   return (
     <div className="app">

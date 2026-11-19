@@ -49,8 +49,9 @@ export function flowEvidence(row: Flow, pred: Prediction, reasons: Reason[], thr
     `verdict: ${pred.intrusion ? "INTRUSION" : "SAFE"}  (alert threshold ${threshold.toFixed(2)})`,
     `attack_probability: ${pred.pAttack.toFixed(3)}`,
   ];
-  if (pred.intrusion)
+  if (pred.intrusion && !Number.isNaN(pred.categoryConf))
     lines.push(`predicted_category: ${pred.category}  (stage-2 confidence ${pred.categoryConf.toFixed(3)})`);
+  else if (pred.intrusion) lines.push("predicted_category: unknown (attack-type model still loading)");
   lines.push("top SHAP contributions (field = value -> log-odds push):");
   for (const r of reasons)
     lines.push(`  ${r.feature} = ${fmt(r.value)} -> ${r.shap >= 0 ? "+" : ""}${r.shap.toFixed(3)} ` +

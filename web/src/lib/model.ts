@@ -26,7 +26,8 @@ export interface ModelData {
   categorical: string[];
   numeric: string[];
   binary: Stage & { base: number; source: string[] };
-  multi: Stage & { base: number[]; tree_class: number[]; classes: string[] };
+  /** Stage 2 arrives after the page is usable; null until then. */
+  multi: (Stage & { base: number[]; tree_class: number[]; classes: string[] }) | null;
 }
 
 export interface Prediction {
@@ -42,15 +43,26 @@ export interface Reason { feature: string; shap: number; value: string | number 
  * float32 thresholds; JSON decimals parse as float64, which sends values that sit
  * exactly on a split boundary down the wrong branch. Float32Array restores the
  * exact float32 values. */
+function toFloat32(stage: Stage) {
+  for (const t of stage.trees) {
+    t.t = Float32Array.from(t.t);
+    t.c = Float32Array.from(t.c);
+  }
+}
+
+/** Stage 1 + shared fields (binary.json.gz). */
 export function loadModel(json: unknown): ModelData {
   const m = json as ModelData;
-  for (const stage of [m.binary, m.multi]) {
-    for (const t of stage.trees) {
-      t.t = Float32Array.from(t.t);
-      t.c = Float32Array.from(t.c);
-    }
-  }
+  toFloat32(m.binary);
+  m.multi = null;
   return m;
+}
+
+/** Add stage 2 (multi.json.gz) once it has downloaded. Returns a new object so React re-renders. */
+export function withMulti(m: ModelData, json: unknown): ModelData {
+  const multi = json as NonNullable<ModelData["multi"]>;
+  toFloat32(multi);
+  return { ...m, multi };
 }
 
 // ── preprocessing ──────────────────────────────────────────────────────────
@@ -101,8 +113,9 @@ export function binaryMargin(model: ModelData, x: Float32Array): number {
 }
 
 export function multiProba(model: ModelData, x: Float32Array): number[] {
-  const m = model.multi.base.slice();
-  model.multi.trees.forEach((t, i) => { m[model.multi.tree_class[i]] += leafValue(t, x); });
+  const mc = model.multi!;
+  const m = mc.base.slice();
+  mc.trees.forEach((t, i) => { m[mc.tree_class[i]] += leafValue(t, x); });
   const top = Math.max(...m);
   const e = m.map((v) => Math.exp(v - top));
   const s = e.reduce((a, b) => a + b, 0);
@@ -115,6 +128,8 @@ export function predict(model: ModelData, raw: Flow, threshold = 0.5): Predictio
   const row = clean(raw, model);
   const pAttack = sigmoid(binaryMargin(model, encode(row, model.binary, model)));
   if (pAttack < threshold) return { pAttack, intrusion: false, category: "Normal", categoryConf: 1 - pAttack };
+  // Stage 2 still downloading: the alert stands, the attack type comes a moment later.
+  if (!model.multi) return { pAttack, intrusion: true, category: "Attack", categoryConf: NaN };
   const p = multiProba(model, encode(row, model.multi, model));
   const k = p.indexOf(Math.max(...p));
   return { pAttack, intrusion: true, category: model.multi.classes[k], categoryConf: p[k] };

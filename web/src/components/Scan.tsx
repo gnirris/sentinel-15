@@ -44,6 +44,7 @@ export default function Scan({ model, sample, threshold, llm, onEvidence }: {
   }
 
   function loadFile(f: File) {
+    if (!model.multi) { setError("The attack-type model is still loading. Try again in a few seconds."); return; }
     setError(null); setProgress(0);
     Papa.parse<Flow>(f, {
       header: true, dynamicTyping: true, skipEmptyLines: true, worker: true,
@@ -120,7 +121,8 @@ export default function Scan({ model, sample, threshold, llm, onEvidence }: {
         <span>Drop a <b>.csv</b> file here, or</span>
         <div className="row">
           <button className="btn" onClick={() => fileInput.current?.click()}>Choose a file</button>
-          <button className="btn primary" onClick={() => score("sample_test_flows.csv", sample)}>Scan the sample log</button>
+          <button className="btn primary" disabled={!model.multi} onClick={() => score("sample_test_flows.csv", sample)}>
+            {model.multi ? "Scan the sample log" : "Loading attack-type model…"}</button>
         </div>
         <input ref={fileInput} type="file" accept=".csv,text/csv" hidden
                onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ""; }} />
