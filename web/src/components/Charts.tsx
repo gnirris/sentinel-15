@@ -17,7 +17,7 @@ export function ShapBars({ reasons }: { reasons: Reason[] }) {
   const W = 460, rowH = 36, labelW = 190, H = reasons.length * rowH + 42;
   const max = Math.max(...reasons.map((r) => Math.abs(r.shap)), 0.01);
   const plotW = W - labelW - 16, zero = labelW + plotW / 2;
-  const x = (v: number) => (v / max) * (plotW / 2);
+  const x = (v: number) => (v / max) * (plotW / 2 - 46);
   const summary = reasons.map((r) => `${r.feature} ${r.shap > 0 ? "toward attack" : "toward normal"} ${Math.abs(r.shap).toFixed(2)}`).join("; ");
   return (
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Top reasons: ${summary}`}>

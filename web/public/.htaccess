@@ -1,5 +1,6 @@
 # Namecheap shared hosting (LiteSpeed/Apache)
 Options -Indexes
+DirectoryIndex index.html
 
 # Compress the 5 MB model file and the app on the wire (~1.5 MB)
 <IfModule mod_deflate.c>
